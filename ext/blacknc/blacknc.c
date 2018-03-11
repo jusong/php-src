@@ -262,6 +262,58 @@ ZEND_FUNCTION(blacknc_array) {
 	add_index_zval(return_value, 234, subarr);
 }
 
+#define PHP_SAMPLE_DESCRIPTOR_RES_NAME "文件描述符"
+static int le_sample_descriptor;
+void php_sample_descriptor_dtor(zend_rsrc_list_entry *rsrc TSRMLS_DC);
+ZEND_MINIT_FUNCTION(blacknc) {
+	le_sample_descriptor = zend_register_list_destructors_ex(php_sample_descriptor_dtor, NULL, PHP_SAMPLE_DESCRIPTOR_RES_NAME, 1);
+	return SUCCESS;
+}
+
+void php_sample_descriptor_dtor(zend_rsrc_list_entry *rsrc TSRMLS_DC) {
+	FILE *fp = (FILE *)rsrc->ptr;
+	fclose(fp);
+}
+
+PHP_FUNCTION(blacknc_fopen) {
+	FILE *fp;
+	char *filename, *mode;
+	int filename_len, mode_len;
+
+	if (zend_get_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "ss", &filename, &filename_len, &mode, &mode_len) == FAILURE) {
+		RETURN_NULL();
+	}
+
+	if (!filename_len || !mode_len) {
+		php_error_docref(NULL TSRMLS_CC, E_WARNING, "Invalid filename or mode length");
+		RETURN_FALSE;
+	}
+
+	fp = fopen(filename, mode);
+	if (!fp) {
+		php_error_docref(NULL TSRMLS_CC, E_WARNING, "Unable to open %s using mode %s", filename, mode);
+		RETURN_FALSE;
+	}
+
+	ZEND_REGISTER_RESOURCE(return_value, fp, le_sample_descriptor);
+}
+
+ZEND_FUNCTION(blacknc_fwrite) {
+
+	FILE *fp;
+	zval *file_resource;
+	char *data;
+	int data_len;
+
+	if (zend_get_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "rs", &file_resource, &data, &data_len) == FAILURE) {
+		RETURN_NULL();
+	}
+
+	ZEND_FETCH_RESOURCE(fp, FILE *, &file_resource, -1, PHP_SAMPLE_DESCRIPTOR_RES_NAME, le_sample_descriptor);
+
+	RETURN_LONG(fwrite(data, 1, data_len, fp));
+}
+
 void php_sample_zend_hash_apply_desc(HashTable *htable, apply_func_t apply_func TSRMLS_DC) {
 
 	HashPosition pos;
@@ -435,6 +487,8 @@ static zend_function_entry blacknc_function_entry[] = {
 	ZEND_FE(blacknc_get_args, NULL)
 	ZEND_FE(blacknc_get_parameters_array_ex, NULL)
 	ZEND_FE(blacknc_ht, NULL)
+	ZEND_FE(blacknc_fopen, NULL)
+	ZEND_FE(blacknc_fwrite, NULL)
 	ZEND_FE(blacknc_loaded_functions, NULL)
 	{NULL, NULL, NULL}
 };
@@ -443,7 +497,7 @@ zend_module_entry blacknc_module_entry = {
 	STANDARD_MODULE_HEADER,
 	"blacknc",
 	blacknc_function_entry, //Function entry
-	NULL, //Minit
+	ZEND_MINIT(blacknc), //Minit
 	NULL, //Mshutdown
 	NULL, //Rinit
 	NULL, //Rshutdown
